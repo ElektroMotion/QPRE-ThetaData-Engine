@@ -4,16 +4,15 @@ import time
 import warnings
 import requests
 import pandas as pd
-from dotenv import load_dotenv
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="pandas")
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Cargar variables del archivo .env
-load_dotenv(r"C:\PYGEX\config.env")
+# ============ PEGA TU API KEY AQUÍ ============
+THETA_API_KEY = "tu_api_key_aqui"  # ← REEMPLAZA "tu_api_key_aqui" CON TU VERDADERA KEY
+# ============================================
 
-THETA_HOST = os.getenv("THETA_HOST", "http://127.0.0.1:25510")
-THETA_API_KEY = os.getenv("THETA_API_KEY", "")
+THETA_HOST = "http://127.0.0.1:25510"
 BASE_DIR = r"C:\PYGEX"
 SYMBOL_FILE = os.path.join(BASE_DIR, "active_symbol.txt")
 EXPORT_PATH = os.path.join(BASE_DIR, "mc_levels.json")
@@ -28,16 +27,18 @@ class ThetaDataGEXEngine:
             clean_symbol = symbol.split('.')[0].split(' ')[0].upper()
             url = f"{self.host}/v2/bulk_snapshot/option/greeks"
             
-            # Preparar headers con API Key si está disponible
+            # Preparar headers con API Key
             headers = {}
-            if self.api_key:
+            if self.api_key and self.api_key != "tu_api_key_aqui":
                 headers["Authorization"] = f"Bearer {self.api_key}"
             
             response = requests.get(url, params={"root": clean_symbol, "exp": "0"}, headers=headers, timeout=5)
-            if response.status_code != 200: return {}
+            if response.status_code != 200: 
+                return {}
 
             data = response.json()
-            if not data or "response" not in data or not isinstance(data["response"], list): return {}
+            if not data or "response" not in data or not isinstance(data["response"], list): 
+                return {}
 
             records = []
             for item in data["response"]:
@@ -61,7 +62,8 @@ class ThetaDataGEXEngine:
                     })
 
             df = pd.DataFrame(records)
-            if df.empty: return {}
+            if df.empty: 
+                return {}
 
             calls = df[df['right'] == 'C'].copy()
             puts = df[df['right'] == 'P'].copy()
@@ -74,25 +76,20 @@ class ThetaDataGEXEngine:
             put_wall = float(puts.groupby('strike')['weight'].sum().idxmax()) if not puts.empty and puts['weight'].sum() > 0 else 0.0
             
             # --- ZERO GAMMA (Fixed: True Gamma Accumulation) ---
-            # Calculate gamma exposure for each strike: OI * Gamma
             calls['gamma_exposure'] = calls['oi'] * calls['gamma']
             puts['gamma_exposure'] = puts['oi'] * puts['gamma']
             
-            # Group by strike and sum gamma exposure
             call_gamma_grouped = calls.groupby('strike')['gamma_exposure'].sum()
             put_gamma_grouped = puts.groupby('strike')['gamma_exposure'].sum()
             
-            # Combine all strikes and their net gamma
             all_strikes = pd.concat([call_gamma_grouped, put_gamma_grouped]).groupby(level=0).sum()
             
-            # Find strike with gamma closest to zero (minimum absolute gamma)
             if not all_strikes.empty:
                 zero_gamma = float(all_strikes.abs().idxmin())
             else:
                 zero_gamma = 0.0
 
             # --- DEX (Delta Exposure Walls) ---
-            # DEX = OI * Delta (already weighted, no additional * 100 needed for comparison)
             calls['dex'] = calls['oi'] * calls['delta']
             puts['dex'] = puts['oi'] * puts['delta']
 
