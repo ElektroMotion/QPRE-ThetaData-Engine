@@ -4,25 +4,36 @@ import time
 import warnings
 import requests
 import pandas as pd
+from dotenv import load_dotenv
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="pandas")
 warnings.filterwarnings("ignore", category=UserWarning)
 
-THETA_HOST = "http://127.0.0.1:25510"
+# Cargar variables del archivo .env
+load_dotenv(r"C:\PYGEX\config.env")
+
+THETA_HOST = os.getenv("THETA_HOST", "http://127.0.0.1:25510")
+THETA_API_KEY = os.getenv("THETA_API_KEY", "")
 BASE_DIR = r"C:\PYGEX"
 SYMBOL_FILE = os.path.join(BASE_DIR, "active_symbol.txt")
 EXPORT_PATH = os.path.join(BASE_DIR, "mc_levels.json")
 
 class ThetaDataGEXEngine:
-    def __init__(self, host: str = THETA_HOST):
+    def __init__(self, host: str = THETA_HOST, api_key: str = THETA_API_KEY):
         self.host = host
+        self.api_key = api_key
 
     def compute_gex_levels(self, symbol: str) -> dict:
         try:
             clean_symbol = symbol.split('.')[0].split(' ')[0].upper()
             url = f"{self.host}/v2/bulk_snapshot/option/greeks"
             
-            response = requests.get(url, params={"root": clean_symbol, "exp": "0"}, timeout=5)
+            # Preparar headers con API Key si está disponible
+            headers = {}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            
+            response = requests.get(url, params={"root": clean_symbol, "exp": "0"}, headers=headers, timeout=5)
             if response.status_code != 200: return {}
 
             data = response.json()
@@ -105,7 +116,7 @@ class ThetaDataGEXEngine:
                 "TotalVanna": total_vanna,
                 "TotalCharm": total_charm
             }
-        except Exception:
+        except Exception as e:
             return {}
 
 def export_atomic(path: str, data: dict):
